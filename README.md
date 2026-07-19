@@ -1,243 +1,129 @@
-# pedro_luis_imoveis_images
+# Pedro Luis Imóveis — Images
 
-> Microservice for image storage, upload, and delivery — built for the Pedro Luis Imóveis real estate platform.
+> Upload, resize and serve listing photos and video. Oversized images are
+> re-encoded to fit, not rejected.
+
+One of five repositories that make up the product:
+
+| Repository | Role |
+|---|---|
+| frontend | Public site — map + listings |
+| dashboard | Admin panel — listing CRUD, uploads, auth |
+| backend | REST API |
+| **images** (this one) | Upload, resize and serve photos/video |
+| database | MongoDB container + backup scripts |
 
 ---
 
 ## Features
 
-- Upload a single image or up to 10 images in one request
-- Delete images by filename
-- Serve images as static files via a public URL
-- Query total storage usage (bytes)
-- JWT-based authentication on all write endpoints
-- CORS enabled for cross-origin clients
-- Dockerized for easy deployment behind a reverse proxy
+- **Automatic resizing** — images are re-encoded to fit within 2560×2560 as WebP
+  at quality 82. A broker never has to think about file size, and a 30MB phone
+  photo becomes a few hundred KB.
+- **EXIF orientation handled** — rotation is applied before resizing, so
+  portrait photos don't come out sideways. EXIF is stripped in the process,
+  including GPS, which is what you want on a public listing site.
+- **Video passthrough** — MP4 and MOV up to 300MB. `.mov` is accepted because
+  iPhones record `video/quicktime` by default.
+- **Safe deletes** — filenames are reduced to a basename and the resolved path is
+  checked to be inside the upload directory.
+- **Temp file hygiene** — the temp directory is swept on boot, and cleanup
+  failures are logged rather than swallowed.
 
 ---
 
-## Preview
+## Tech stack
 
-Images uploaded are stored in `public/` and served at:
-
-```
-GET /images/:filename
-```
-
-File names are automatically timestamped on upload to avoid collisions (e.g., `photo_1762126531.jpg`).
+Node.js · Express · multer · sharp
 
 ---
 
-## Tech Stack
-
-| Layer       | Technology                        |
-|-------------|-----------------------------------|
-| Runtime     | Node.js 21 (ESM)                  |
-| Framework   | Express 5                         |
-| Auth        | JSON Web Tokens (`jsonwebtoken`)  |
-| File Upload | Multer 2                          |
-| Date util   | Moment.js                         |
-| Container   | Docker + Docker Compose           |
-| Proxy       | nginx-proxy (via `VIRTUAL_HOST`)  |
-
----
-
-## Project Structure
-
-```
-pedro_luis_imoveis_images/
-├── src/
-│   ├── server.js                        # Entry point — Express app setup
-│   ├── routes/
-│   │   ├── index.js                     # Aggregates all routes
-│   │   └── version.js                   # GET /version (health check)
-│   ├── middlewares/
-│   │   ├── jwt.js                       # verifyToken / createToken
-│   │   └── multer.js                    # Disk storage config (timestamped filenames)
-│   └── features/
-│       ├── upload/
-│       │   ├── routes/upload_route.js   # POST /upload/*
-│       │   └── controllers/upload_controller.js
-│       └── information/
-│           ├── routes/information_route.js  # GET /stats
-│           └── controllers/information_controller.js
-├── public/                              # Static image files served here
-├── Dockerfile
-├── docker-compose.yml
-└── package.json
-```
-
----
-
-## Installation
-
-**Prerequisites:** Node.js 18+ or Docker
-
-### Local
+## Getting started
 
 ```bash
 npm install
-```
-
-Create a `.env` file:
-
-```env
-PORT=3000
-HOST=http://localhost:3000
-ACCESS_TOKEN_JWT=your_secret_key
-```
-
-### Docker
-
-```bash
-docker compose up --build
-```
-
-The service picks up `PORT`, `HOST`, and `VIRTUAL_HOST` from your environment or a `.env` file.
-
----
-
-## Usage
-
-### Start (development)
-
-```bash
-npm run dev
-```
-
-### Start (production)
-
-```bash
-npm start
+cp .env.example .env     # then fill it in
+npm start                # http://localhost:3200
 ```
 
 ---
 
-## API
+## Configuration
 
-All endpoints except `GET /version` and `GET /images/:filename` require a Bearer token:
+All limits live in `src/config/upload.js`, in one place because the multer
+middleware, the processing step and the error messages all have to agree.
 
-```
-Authorization: Bearer <token>
-```
-
-### Health Check
-
-```
-GET /version
-```
-
-Returns service name and version. No auth required.
+| Setting | Value |
+|---|---|
+| `MAX_UPLOAD` | 300MB — multer's single limit, so it must be the larger of the two |
+| `IMAGE_MAX_UPLOAD` | 60MB |
+| `VIDEO_MAX_UPLOAD` | 300MB |
+| `IMAGE_MAX_DIMENSION` | 2560px |
+| `IMAGE_QUALITY` | 82 (WebP) |
+| `MAX_FILES` | 10 |
 
 ---
 
-### Upload Single Image
+## Notes for anyone reading the code
 
-```
-POST /upload/single
-Content-Type: multipart/form-data
-field: file
-```
+**`.rotate()` must come before `.resize()`.** sharp drops the EXIF orientation
+flag during resize, so rotating afterwards is too late.
 
-**Response:**
-```json
-{
-  "status": 200,
-  "payload": {
-    "path": "http://your-host/images/photo_1762126531.jpg",
-    "size": 204800
-  },
-  "message": "Ok!"
-}
-```
+**sharp is handed a Buffer, not a path.** libvips keeps the input file open when
+given a path, which makes the temp file undeletable on Windows and leaked one
+copy of every upload — a real ~30MB-per-batch leak, made invisible by a cleanup
+helper that swallowed the `unlink` failure.
+
+**Resizing only ever shrinks.** It cannot recover detail that was thrown away
+before upload. Photos that arrive already WhatsApp-compressed at 1280×960 stay
+that way — the fix for those is getting originals off the camera, not a code
+change.
 
 ---
 
-### Upload Multiple Images
+## Project structure
 
 ```
-POST /upload/many
-Content-Type: multipart/form-data
-field: files (up to 10 files)
-```
-
-**Response:**
-```json
-{
-  "status": 200,
-  "payload": [
-    { "path": "http://your-host/images/img1_1762126531.jpg", "size": 102400 },
-    { "path": "http://your-host/images/img2_1762126531.jpg", "size": 98304 }
-  ],
-  "message": "Ok"
-}
+src/
+  config/upload.js             limits and processing targets
+  features/upload/
+    controllers/  routes/
+  middlewares/
+    multer.js                  storage + limits
+    process_upload.js          resize pipeline, temp cleanup
+  server.js
+public/                        served files; public/tmp is scratch
 ```
 
 ---
 
-### Delete Image
+## Known limitations
 
-```
-POST /upload/delete
-Content-Type: application/json
-
-{ "filename": "photo_1762126531.jpg" }
-```
-
----
-
-### Storage Stats
-
-```
-GET /stats
-```
-
-**Response:**
-```json
-{
-  "status": 200,
-  "payload": 5242880,
-  "message": "Size in bytes"
-}
-```
+- Video is passed through unprocessed — no transcoding, no thumbnail extraction.
+- Files are stored on local disk. Moving to object storage would need changes
+  here and in the urls the backend stores.
+- No test suite. Verification is manual, by uploading real photos through the
+  dashboard.
 
 ---
 
-### Serve Image
+## Project status and contributions
 
-```
-GET /images/:filename
-```
+This is a commissioned project built for a specific business. It is **not** an
+open source project and is not accepting contributions, feature requests or
+pull requests.
 
-No authentication required. Served directly from the `public/` folder.
+## Copyright and licence
 
----
+**Copyright © 2026 Lucca Gabriel. All rights reserved.**
 
-## Roadmap
+This repository is published so the source can be **read**, as a portfolio piece
+and for reference. It is deliberately published **without a licence**, which
+under default copyright law means all rights are reserved.
 
-- [ ] Image resizing / thumbnail generation on upload
-- [ ] Per-user storage quotas
-- [ ] Soft delete (move to trash instead of `fs.rmSync`)
-- [ ] Support for S3 / object storage backend
-- [ ] Rate limiting on upload endpoints
+Viewing and forking within GitHub are permitted by GitHub's Terms of Service.
+That does **not** grant permission to use, copy, modify, deploy or redistribute
+this code. Third-party dependencies keep their own licences, and Pedro Luis
+Imóveis brand assets are the property of their owner.
 
----
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feat/my-feature`
-3. Commit your changes: `git commit -m 'feat: add my feature'`
-4. Push and open a Pull Request
-
----
-
-## License
-
-MIT
-
----
-
-**Short description (for GitHub):** Lightweight Express microservice for image upload, storage, and delivery with JWT auth — built for the Pedro Luis Imóveis platform.
-
-**Suggested GitHub tags:** `nodejs` `express` `image-upload` `microservice` `multer` `jwt` `docker` `rest-api` `real-estate`
+See [`COPYRIGHT.md`](COPYRIGHT.md) for the full terms.
