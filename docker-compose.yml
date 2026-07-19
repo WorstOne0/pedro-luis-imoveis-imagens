@@ -1,12 +1,32 @@
 services:
-  backend:
-    restart: unless-stopped
+  images:
     build: .
+    container_name: pedro_luis_imoveis_images
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - LETSENCRYPT_HOST=${HOST}
       - VIRTUAL_HOST=${HOST}
       - VIRTUAL_PORT=${PORT}
-    ports:
-      - ${PORT}:${PORT}
+      # Must exceed VIDEO_MAX_UPLOAD (300MB) or nginx rejects the request
+      # before it ever reaches the app. The default is 1MB.
+      - CLIENT_MAX_BODY_SIZE=320m
+    volumes:
+      # Without this every uploaded photo is lost on the next rebuild, because
+      # the container filesystem is thrown away.
+      - images_data:/app/public
     expose:
       - ${PORT}
+    networks:
+      - pedro-net
+      - nginx-proxy
+
+volumes:
+  images_data:
+
+networks:
+  pedro-net:
+    external: true
+  nginx-proxy:
+    external: true

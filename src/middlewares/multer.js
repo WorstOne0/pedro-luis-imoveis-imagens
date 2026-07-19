@@ -2,16 +2,17 @@ import multer from "multer";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
+import config from "../config/upload.js";
 
-const UPLOAD_DIR = "public";
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB — matches the limit the dropzone advertises
-const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/avif", "video/mp4"];
+const ALLOWED_MIME = [...config.IMAGE_MIME, ...config.VIDEO_MIME];
 
+// Streamed to a temp directory rather than held in memory: a 300MB video
+// buffered in RAM would take the process down.
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    if (!fs.existsSync(config.TMP_DIR)) fs.mkdirSync(config.TMP_DIR, { recursive: true });
 
-    cb(null, UPLOAD_DIR);
+    cb(null, config.TMP_DIR);
   },
   filename: (req, file, cb) => {
     // A timestamp alone collides: uploadMany writes a whole batch within the
@@ -38,4 +39,8 @@ const fileFilter = (req, file, cb) => {
   return cb(null, true);
 };
 
-export default multer({ storage, fileFilter, limits: { fileSize: MAX_FILE_SIZE, files: 10 } });
+export default multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: config.MAX_UPLOAD, files: config.MAX_FILES },
+});

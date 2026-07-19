@@ -1,14 +1,19 @@
-FROM node:21-alpine
-
-# ENV PNPM_HOME="/pnpm"
-# ENV PATH="$PNPM_HOME:$PATH"
-# RUN corepack enable
+FROM node:22-alpine
 
 WORKDIR /app
-COPY . .
 
-RUN npm install
-# RUN pnpm run start
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY src ./src
+
+# Uploads land here. A volume is mounted over it at runtime; creating it up
+# front with the right owner means the non-root user can write to it.
+RUN mkdir -p /app/public && chown -R node:node /app/public
+
+ENV NODE_ENV=production
+
+USER node
 
 EXPOSE ${PORT}
 

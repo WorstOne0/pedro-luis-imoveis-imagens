@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log*
+.git
+.gitignore
+.env
+.env.*
+Dockerfile
+docker-compose.yml
+README.md
+# Never bake existing uploads into the image - they belong in the volume.
+public

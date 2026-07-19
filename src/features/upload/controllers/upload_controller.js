@@ -1,21 +1,23 @@
 import fs from "fs";
 import path from "path";
+import config from "../../../config/upload.js";
 
-const UPLOAD_DIR = path.resolve("public");
+const UPLOAD_DIR = path.resolve(config.UPLOAD_DIR);
 
-// multer gives us a platform specific path; basename keeps this working on
-// Linux/Docker, where the previous split("\\") returned the whole path.
+// process_upload has already written the final files; this only maps them to
+// public urls.
 const toPublicUrl = (file) => ({
-  path: `${process.env.HOST}/images/${path.basename(file.path)}`,
+  path: `${process.env.HOST}/images/${file.filename}`,
   size: file.size,
 });
 
 export default {
   async uploadSingle(req, res) {
     try {
-      if (!req.file) return res.status(400).json({ status: 400, message: "Nenhum arquivo enviado" });
+      const [file] = req.processedFiles ?? [];
+      if (!file) return res.status(400).json({ status: 400, message: "Nenhum arquivo enviado" });
 
-      return res.status(200).json({ status: 200, payload: toPublicUrl(req.file), message: "Ok!" });
+      return res.status(200).json({ status: 200, payload: toPublicUrl(file), message: "Ok!" });
     } catch (error) {
       console.log("Error - upload_controller.js - uploadSingle", error);
       return res.status(500).json({ status: 500, message: "Erro ao salvar arquivo" });
@@ -23,9 +25,10 @@ export default {
   },
   async uploadMany(req, res) {
     try {
-      if (!req.files || req.files.length === 0) return res.status(400).json({ status: 400, message: "Nenhum arquivo enviado" });
+      const files = req.processedFiles ?? [];
+      if (files.length === 0) return res.status(400).json({ status: 400, message: "Nenhum arquivo enviado" });
 
-      return res.status(200).json({ status: 200, payload: req.files.map(toPublicUrl), message: "Ok!" });
+      return res.status(200).json({ status: 200, payload: files.map(toPublicUrl), message: "Ok!" });
     } catch (error) {
       console.log("Error - upload_controller.js - uploadMany", error);
       return res.status(500).json({ status: 500, message: "Erro ao salvar arquivos" });
