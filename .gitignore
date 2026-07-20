@@ -11,3 +11,7 @@
 /public
 ./public
 public
+
+# Production env - real secrets, never commit
+.env-prod
+.env-*
