@@ -25,7 +25,10 @@ export default {
   IMAGE_MAX_DIMENSION: 2560,
   IMAGE_QUALITY: 82,
 
-  MAX_FILES: 10,
+  // A listing routinely has 20+ photos — every room, plus the facade and the
+  // yard. Ten rejected real uploads. Must stay in step with the gallery
+  // maxCount in the backend's real_estate route.
+  MAX_FILES: 30,
 
   // .mov is here because iPhones record video/quicktime by default. It is
   // stored as-is, but browser playback is inconsistent outside Safari — mp4
